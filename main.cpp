@@ -24,10 +24,13 @@ float get_one_to_neg_one(void)
 
 const size_t num_components = 8;
 const float grid_max = 10;
-const size_t num_samples = 10;
-const size_t num_epochs = 10;
-float inputTrainingDataArray[num_samples][num_components * 2];
-float outputTrainingDataArray[num_samples][num_components];
+const size_t num_training_samples = 10;
+const size_t num_sessions = 10;
+const size_t max_iterations = 10000;
+const float min_error = 0.0001f;
+
+float inputTrainingDataArray[num_training_samples][num_components * 2];
+float outputTrainingDataArray[num_training_samples][num_components];
 Mat inputTrainingData;
 Mat outputTrainingData;
 
@@ -51,7 +54,7 @@ void get_train_data(void)
 	vector<input_datum> input_data;
 	vector<output_datum> output_data;
 
-	for (size_t i = 0; i < num_samples; i++)
+	for (size_t i = 0; i < num_training_samples; i++)
 	{
 		vertex<float, num_components> in_a;
 
@@ -83,18 +86,17 @@ void get_train_data(void)
 		output_data.push_back(od);
 	}
 
-	for (size_t i = 0; i < num_samples; i++)
+	for (size_t i = 0; i < num_training_samples; i++)
 		for (size_t j = 0; j < num_components * 2; j++)
 			inputTrainingDataArray[i][j] = input_data[i].input[j];
 
-	inputTrainingData = Mat(num_samples, num_components * 2, CV_32F, inputTrainingDataArray);
+	inputTrainingData = Mat(num_training_samples, num_components * 2, CV_32F, inputTrainingDataArray);
 
-	for (size_t i = 0; i < num_samples; i++)
+	for (size_t i = 0; i < num_training_samples; i++)
 		for (size_t j = 0; j < num_components; j++)
 			outputTrainingDataArray[i][j] = output_data[i].output[j];
 
-	outputTrainingData = Mat(num_samples, num_components, CV_32F, outputTrainingDataArray);
-
+	outputTrainingData = Mat(num_training_samples, num_components, CV_32F, outputTrainingDataArray);
 }
 
 
@@ -115,7 +117,7 @@ int main(void)
 
 	mlp->setActivationFunction(ANN_MLP::ActivationFunctions::SIGMOID_SYM);  
 
-	TermCriteria termCrit = TermCriteria(TermCriteria::Type::COUNT + TermCriteria::Type::EPS, 10000, 0.000001);
+	TermCriteria termCrit = TermCriteria(TermCriteria::Type::COUNT + TermCriteria::Type::EPS, max_iterations, min_error);
 	mlp->setTermCriteria(termCrit);
 
 	mlp->setTrainMethod(ANN_MLP::TrainingMethods::BACKPROP);
@@ -124,7 +126,7 @@ int main(void)
 	Ptr<TrainData> trainingData = TrainData::create(inputTrainingData, SampleTypes::ROW_SAMPLE, outputTrainingData);
 	mlp->train(trainingData);
 
-	for (size_t i = 0; i < num_epochs - 1; i++)
+	for (size_t i = 0; i < num_sessions - 1; i++)
 	{
 		get_train_data();
 		trainingData = TrainData::create(inputTrainingData, SampleTypes::ROW_SAMPLE, outputTrainingData);
