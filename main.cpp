@@ -22,15 +22,17 @@ float get_one_to_neg_one(void)
 	return r;
 }
 
-const size_t num_components = 4;
-const float grid_max = 10;
-const size_t num_training_samples = 1000000;
+const size_t num_components = 4; // quaternions
+const float grid_max = 8;
+const float grid_min = -grid_max;
+const size_t res = 25;
+
 const size_t num_sessions = 1;
 const size_t max_iterations = 10000;
 const float min_error = 0.0001f;
 
-float inputTrainingDataArray[num_training_samples][num_components * 2];
-float outputTrainingDataArray[num_training_samples][num_components];
+float inputTrainingDataArray[res*res*res*res][num_components * 2];
+float outputTrainingDataArray[res*res*res*res][num_components];
 Mat inputTrainingData;
 Mat outputTrainingData;
 
@@ -49,54 +51,88 @@ public:
 };
 
 
+
+
+template<class T, size_t N = 4>
+void get_marched_quaternion_vertices(vector<vertex<T, 4>>& grid)
+{
+	vertex<float, 4> Z;
+	grid.clear();
+
+	const float step_size = (grid_max - grid_min) / (res - 1);
+
+	for (size_t i = 0; i < Z.vd.size(); i++)
+		Z.vd[i] = grid_min;
+
+	for (size_t i0 = 0; i0 < res; i0++, Z.vd[0] += step_size)
+	{
+		Z.vd[1] = grid_min;
+
+		for (size_t i1 = 0; i1 < res; i1++, Z.vd[1] += step_size)
+		{
+			Z.vd[2] = grid_min;
+
+			for (size_t i2 = 0; i2 < res; i2++, Z.vd[2] += step_size)
+			{
+				Z.vd[3] = grid_min;
+
+				for (size_t i3 = 0; i3 < res; i3++, Z.vd[3] += step_size)
+				{
+					grid.push_back(Z);
+				}
+			}
+		}
+	}
+}
+
+
 void get_train_data(void)
 {
+	vector<vertex<float, num_components>> grid;
+	get_marched_quaternion_vertices(grid);
+
 	vector<input_datum> input_data;
 	vector<output_datum> output_data;
 
-	for (size_t i = 0; i < num_training_samples; i++)
+	for (size_t i = 0; i < grid.size(); i++)
 	{
-		vertex<float, num_components> in_a;
+		for (size_t j = 0; j < grid.size(); j++)
+		{
+			vertex<float, num_components> in_a = grid[i];
+			vertex<float, num_components> in_b = grid[j];
 
-		for (size_t j = 0; j < in_a.vd.size(); j++)
-			in_a.vd[j] = get_one_to_neg_one() * grid_max;
+			vertex<float, num_components> answer = traditional_mul(in_a, in_b);
 
-		vertex<float, num_components> in_b;
+			input_datum id;
 
-		for (size_t j = 0; j < in_b.vd.size(); j++)
-			in_b.vd[j] = get_one_to_neg_one() * grid_max;
+			for (size_t j = 0; j < num_components; j++)
+				id.input[j] = in_a.vd[j];
 
-		vertex<float, num_components> answer = traditional_mul(in_a, in_b);
+			for (size_t j = num_components; j < num_components * 2; j++)
+				id.input[j] = in_b.vd[j - num_components];
 
-		input_datum id;
+			input_data.push_back(id);
 
-		for (size_t j = 0; j < num_components; j++)
-			id.input[j] = in_a.vd[j];
+			output_datum od;
 
-		for (size_t j = num_components; j < num_components * 2; j++)
-			id.input[j] = in_b.vd[j - num_components];
+			for (size_t j = 0; j < num_components; j++)
+				od.output[j] = answer.vd[j];
 
-		input_data.push_back(id);
-
-		output_datum od;
-
-		for (size_t j = 0; j < num_components; j++)
-			od.output[j] = answer.vd[j];
-
-		output_data.push_back(od);
+			output_data.push_back(od);
+		}
 	}
 
-	for (size_t i = 0; i < num_training_samples; i++)
+	for (size_t i = 0; i < grid.size(); i++)
 		for (size_t j = 0; j < num_components * 2; j++)
 			inputTrainingDataArray[i][j] = input_data[i].input[j];
 
-	inputTrainingData = Mat(num_training_samples, num_components * 2, CV_32F, inputTrainingDataArray);
+	inputTrainingData = Mat(static_cast<int>(grid.size()), num_components * 2, CV_32F, inputTrainingDataArray);
 
-	for (size_t i = 0; i < num_training_samples; i++)
+	for (size_t i = 0; i < grid.size(); i++)
 		for (size_t j = 0; j < num_components; j++)
 			outputTrainingDataArray[i][j] = output_data[i].output[j];
 
-	outputTrainingData = Mat(num_training_samples, num_components, CV_32F, outputTrainingDataArray);
+	outputTrainingData = Mat(static_cast<int>(grid.size()), num_components, CV_32F, outputTrainingDataArray);
 }
 
 template<class T, size_t N>
@@ -126,7 +162,7 @@ vertex<T, N> predict_answer(Ptr<ANN_MLP> &mlp, const vertex<T, N>& in_a, const v
 
 int main(void)
 {
-	srand(1234);
+	srand(static_cast<unsigned>(time(0)));
 
 	Ptr<ANN_MLP> mlp = ANN_MLP::create();
 
@@ -159,10 +195,10 @@ int main(void)
 	}
 
 
-	cv::FileStorage fs;
-	fs.open("mlp.xml", cv::FileStorage::WRITE);
-	mlp->write(fs);
-	fs.release();
+	//cv::FileStorage fs;
+	//fs.open("mlp.xml", cv::FileStorage::WRITE);
+	//mlp->write(fs);
+	//fs.release();
 
 	//Ptr<ANN_MLP> mlp2 = ANN_MLP::create();
 	//fs.open("mlp.xml", cv::FileStorage::READ);
